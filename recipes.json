@@ -23,6 +23,17 @@
       }
     },
     {
+      "name": "Copper plate alternative",
+      "machine": "Electric furnace",
+      "seconds": 1.0,
+      "inputs": {
+        "copper ore": 1
+      },
+      "outputs": {
+        "copper plate": 2
+      }
+    },
+    {
       "name": "Make gear",
       "machine": "Assembler",
       "seconds": 0.5,
