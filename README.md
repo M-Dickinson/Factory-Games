@@ -7,11 +7,12 @@ demonstrates the recipe database format.
 ## Run
 
 ```text
-python factory_planner.py --recipes recipes.json --target circuit --rate 2 --base "iron ore" "copper ore"
+python factory_planner.py --target circuit --rate 2 --base "iron ore" "copper ore"
 ```
 
-`--rate` is the requested output quantity per second. Each name after `--base`
-is treated as an unlimited raw material and does not require a recipe.
+`--target` is the requested output material. `--rate` is the requested output
+quantity per second. Each name after `--base` is treated as an unlimited raw
+material and does not require a recipe.
 
 ## Recipe database
 
