@@ -23,7 +23,7 @@
       }
     },
     {
-      "name": "Copper plate alternative",
+      "name": "Smelt copper plate",
       "machine": "Electric furnace",
       "seconds": 1.0,
       "inputs": {
@@ -53,6 +53,18 @@
       },
       "outputs": {
         "copper cable": 2
+      }
+    },
+    {
+      "name": "Copper cable alternative",
+      "machine": "Processor",
+      "seconds": 1.0,
+      "inputs": {
+        "copper plate": 3
+      },
+      "outputs": {
+        "copper cable": 7,
+        "copper ore": 2
       }
     },
     {

@@ -10,6 +10,9 @@ demonstrates the recipe database format.
 python factory_planner.py --target circuit --rate 2 --base "iron ore" "copper ore"
 ```
 
+`--recipes` is an optional argument that can specify a separate JSON recipe
+library (defaults to recipes.json)
+
 `--target` is the requested output material. `--rate` is the requested output
 quantity per second. Each name after `--base` is treated as an unlimited raw
 material and does not require a recipe.

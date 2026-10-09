@@ -58,7 +58,6 @@ def load_recipes(path: Path) -> list[Recipe]:
         raise PlanningError("recipe database must contain a 'recipes' array")
 
     recipes: list[Recipe] = []
-    names: set[str] = set()
     for index, item in enumerate(data["recipes"], start=1):
         label = f"recipe #{index}"
         if not isinstance(item, dict):
@@ -67,9 +66,6 @@ def load_recipes(path: Path) -> list[Recipe]:
         machine = item.get("machine")
         if not isinstance(name, str) or not name.strip():
             raise PlanningError(f"{label} needs a non-empty name")
-        if name in names:
-            raise PlanningError(f"duplicate recipe name: {name}")
-        names.add(name)
         if not isinstance(machine, str) or not machine.strip():
             raise PlanningError(f"{label} needs a non-empty machine name")
         seconds = _positive_number(item.get("seconds"), f"{label} seconds")
