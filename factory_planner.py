@@ -9,7 +9,7 @@ import sys
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
-from typing import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 
 
 class PlanningError(ValueError):
@@ -198,7 +198,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=Path("recipes.json"),
         help="JSON recipe database (default: recipes.json)",
     )
-    parser.add_argument("--target", required=True, help="target material name")
+    parser.add_argument(
+        "--target", 
+        required=True, 
+        help="target material name"
+    )
     parser.add_argument(
         "--rate",
         required=True,
