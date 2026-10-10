@@ -14,14 +14,13 @@ python factory_planner.py --target circuit --rate 2 --base "iron ore" "copper or
 library (defaults to recipes.json)
 
 `--target` is the requested output material. `--rate` is the requested output
-quantity per second. Each name after `--base` is treated as an unlimited raw
-material and does not require a recipe.
+quantity per second.
 
 ## Recipe database
 
-The JSON file has a top-level `recipes` array. Every recipe has a unique name,
-a machine type, processing time in seconds per crafting cycle, and positive
-input/output quantities per cycle:
+The JSON file has a `recipes` array. Every recipe has a machine type,
+processing time in seconds per crafting cycle, and positive input/output
+quantities per cycle:
 
 ```json
 {
@@ -33,6 +32,20 @@ input/output quantities per cycle:
       "inputs": { "iron plate": 2 },
       "outputs": { "gear": 1 }
     }
+  ]
+}
+```
+
+The JSON file also has a `bases` array containing a set of materials that are
+assumed to be infinitely created without machines or cost.
+
+```json
+{
+  "bases": [
+    "copper ore",
+    "iron ore",
+    "coal",
+    "stone"
   ]
 }
 ```

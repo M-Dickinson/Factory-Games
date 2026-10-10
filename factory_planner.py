@@ -89,6 +89,11 @@ def load_recipes(path: Path) -> list[Recipe]:
         )
     return recipes
 
+def load_bases(path: Path) -> set[str]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or not isinstance(data.get("bases"), list):
+            raise PlanningError("recipe database must contain a 'bases' array")
+    return set(data["bases"])
 
 def plan_production(
     target: str,
@@ -205,13 +210,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         help="target production rate in units per second",
     )
-    parser.add_argument(
-        "--base",
-        nargs="+",
-        required=True,
-        metavar="MATERIAL",
-        help="materials available without production",
-    )
     return parser.parse_args(argv)
 
 
@@ -219,7 +217,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     try:
         recipes = load_recipes(args.recipes)
-        plans = plan_production(args.target, args.rate, set(args.base), recipes)
+        bases = load_bases(args.recipes)
+        plans = plan_production(args.target, args.rate, bases, recipes)
     except PlanningError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2

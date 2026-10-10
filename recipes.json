@@ -91,5 +91,11 @@
         "advanced circuit": 1
       }
     }
+  ],
+  "bases": [
+    "copper ore",
+    "iron ore",
+    "coal",
+    "stone"
   ]
 }
