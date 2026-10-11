@@ -90,6 +90,15 @@
       "outputs": {
         "advanced circuit": 1
       }
+    },
+    {
+      "name": "Mine copper",
+      "machine": "Burner drill",
+      "seconds": 2.8,
+      "inputs": {},
+      "outputs": {
+        "copper ore": 1
+      }
     }
   ],
   "bases": [

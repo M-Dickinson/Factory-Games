@@ -64,19 +64,25 @@ class PlannerTests(unittest.TestCase):
             path.write_text(json.dumps(contents), encoding="utf-8")
             self.assertEqual(load_recipes(path)[0].name, "Make plate")
 
-    def test_rejects_empty_recipe_flow(self) -> None:
+    def test_accepts_machine_recipe_with_no_inputs(self) -> None:
         contents = {"recipes": [{
-            "name": "Bad",
-            "machine": "Assembler",
-            "seconds": 1,
+            "name": "Mine ore",
+            "machine": "Burner drill",
+            "seconds": 2.8,
             "inputs": {},
-            "outputs": {"product": 1},
+            "outputs": {"ore": 1},
         }]}
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "recipes.json"
             path.write_text(json.dumps(contents), encoding="utf-8")
-            with self.assertRaisesRegex(PlanningError, "inputs"):
-                load_recipes(path)
+            recipes = load_recipes(path)
+
+        plans = plan_production("ore", 1, {"ore"}, recipes)
+        self.assertEqual(len(plans), 2)
+        self.assertIsNone(plans[0].recipe)
+        self.assertEqual(plans[1].recipe.name, "Mine ore")
+        self.assertEqual(plans[1].machines, 3)
+        self.assertEqual(plans[1].inputs, ())
 
 
 if __name__ == "__main__":

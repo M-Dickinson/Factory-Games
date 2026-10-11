@@ -71,10 +71,9 @@ def load_recipes(path: Path) -> list[Recipe]:
         seconds = _positive_number(item.get("seconds"), f"{label} seconds")
 
         parsed_flows: list[dict[str, float]] = []
+
         for field in ("inputs", "outputs"):
             flows = item.get(field)
-            if not isinstance(flows, dict) or not flows:
-                raise PlanningError(f"{label} '{field}' must be a non-empty object")
             parsed: dict[str, float] = {}
             for material, quantity in flows.items():
                 if not isinstance(material, str) or not material.strip():
@@ -111,11 +110,11 @@ def plan_production(
             by_output.setdefault(material, []).append(recipe)
 
     def expand(material: str, required_rate: float, ancestors: frozenset[str]) -> Iterator[PlanNode]:
-        if material in base_materials:
-            yield PlanNode(material=material, rate=required_rate)
-            return
         if material in ancestors:
             return
+
+        if material in base_materials:
+            yield PlanNode(material=material, rate=required_rate)
 
         candidates = by_output.get(material, [])
         if not candidates:
@@ -184,8 +183,11 @@ def format_plan(node: PlanNode, indent: int = 0) -> str:
         ]
         if byproducts:
             lines.append(f"{prefix}  Other outputs: {', '.join(byproducts)}")
-    lines.append(f"{prefix}  Inputs:")
-    lines.extend(format_plan(child, indent + 4) for child in node.inputs)
+    if node.inputs:
+        lines.append(f"{prefix}  Inputs:")
+        lines.extend(format_plan(child, indent + 4) for child in node.inputs)
+    else:
+        lines.append(f"{prefix}  Inputs: none")
     return "\n".join(lines)
 
 

@@ -36,8 +36,10 @@ quantities per cycle:
 }
 ```
 
-The JSON file also has a `bases` array containing a set of materials that are
-assumed to be infinitely created without machines or cost.
+The JSON file can also have a `bases` array containing materials available
+without requiring production. For a material that is both a base and a recipe
+output, the planner shows the direct base option alongside every valid
+machine-produced option.
 
 ```json
 {
@@ -52,10 +54,11 @@ assumed to be infinitely created without machines or cost.
 
 If multiple recipes can produce the target or one of its required inputs, all
 acyclic recipe combinations are displayed as separate options. Base materials
-are always supplied directly. Machine totals are rounded up to whole machines;
-utilization is shown for the requested average throughput. Additional outputs
-from a recipe are reported as byproducts, but are not credited against
-requirements elsewhere in the tree.
+can be supplied directly, and matching recipes are also considered, including
+recipes with no inputs (such as mining). Machine totals are rounded up to
+whole machines; utilization is shown for the requested average throughput.
+Additional outputs from a recipe are reported as byproducts, but are not
+credited against requirements elsewhere in the tree.
 
 Run the unit tests with:
 
