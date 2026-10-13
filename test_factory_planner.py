@@ -3,7 +3,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from factory_planner import PlanningError, Recipe, load_recipes, plan_production
+from factory_planner import (
+    FuelRequirement,
+    PlanningError,
+    Recipe,
+    collect_fuel_totals,
+    format_plan,
+    load_recipes,
+    plan_production,
+)
 
 
 class PlannerTests(unittest.TestCase):
@@ -23,6 +31,73 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(plan.inputs[0].rate, 4)
         self.assertEqual(plan.inputs[0].inputs[0].material, "ore")
         self.assertEqual(plan.inputs[0].inputs[0].rate, 4)
+
+    def test_fuel_totals_sum_machine_rates_across_tree(self) -> None:
+        recipes = [
+            Recipe(
+                "plate",
+                "Furnace",
+                2,
+                {"ore": 1},
+                {"plate": 1},
+                {"electricity": FuelRequirement("kW", 5)},
+            ),
+            Recipe(
+                "gear",
+                "Assembler",
+                3,
+                {"plate": 2},
+                {"gear": 1},
+                {"steam": FuelRequirement("kg", 0.5)},
+            ),
+        ]
+        [plan] = plan_production("gear", 2, {"ore"}, recipes)
+
+        self.assertEqual(
+            collect_fuel_totals(plan),
+            {"electricity": ("kW", 40), "steam": ("kg", 3)},
+        )
+
+    def test_plan_shows_fuel_rate_under_each_machine_step(self) -> None:
+        recipe = Recipe(
+            "plate",
+            "Furnace",
+            2,
+            {"ore": 1},
+            {"plate": 1},
+            {
+                "electricity": FuelRequirement("kW", 5),
+                "steam": FuelRequirement("kg", 0.25),
+            },
+        )
+        [plan] = plan_production("plate", 3, {"ore"}, [recipe])
+
+        rendered = format_plan(plan)
+
+        self.assertIn("Fuel: electricity 5 kW/s per machine, steam 0.25 kg/s per machine", rendered)
+
+    def test_rejects_inconsistent_fuel_units(self) -> None:
+        recipes = [
+            Recipe(
+                "plate",
+                "Furnace",
+                2,
+                {"ore": 1},
+                {"plate": 1},
+                {"electricity": FuelRequirement("kW", 1)},
+            ),
+            Recipe(
+                "gear",
+                "Assembler",
+                3,
+                {"plate": 2},
+                {"gear": 1},
+                {"electricity": FuelRequirement("MW", 1)},
+            ),
+        ]
+        [plan] = plan_production("gear", 1, {"ore"}, recipes)
+        with self.assertRaisesRegex(PlanningError, "inconsistent units"):
+            collect_fuel_totals(plan)
 
     def test_lists_alternatives_for_target_recipe(self) -> None:
         plans = plan_production(
@@ -58,11 +133,19 @@ class PlannerTests(unittest.TestCase):
             "seconds": 2,
             "inputs": {"ore": 1},
             "outputs": {"plate": 1},
+            "fuel": {
+                "electricity": {"unit": "kW", "per_second": 4}
+            },
         }]}
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "recipes.json"
             path.write_text(json.dumps(contents), encoding="utf-8")
-            self.assertEqual(load_recipes(path)[0].name, "Make plate")
+            recipe = load_recipes(path)[0]
+            self.assertEqual(recipe.name, "Make plate")
+            self.assertEqual(
+                recipe.fuel,
+                {"electricity": FuelRequirement("kW", 4)},
+            )
 
     def test_accepts_machine_recipe_with_no_inputs(self) -> None:
         contents = {"recipes": [{

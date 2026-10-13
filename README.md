@@ -30,11 +30,23 @@ quantities per cycle:
       "machine": "Assembler",
       "seconds": 0.5,
       "inputs": { "iron plate": 2 },
-      "outputs": { "gear": 1 }
+      "outputs": { "gear": 1 },
+      "fuel": {
+        "electricity": { "unit": "kW", "per_second": 90 }
+      }
     }
   ]
 }
 ```
+
+The optional `fuel` object lists each abstract fuel or power type consumed by
+the machine, with its unit and per-machine consumption rate. For example,
+`"electricity": { "unit": "kW", "per_second": 90 }` means each machine
+requires 90 kW. Omit `fuel` for machines with no fuel requirement. The plan
+shows the per-machine fuel rate under each machine step and ends with the
+combined per-second requirement for all machines in that tree. Totals use the
+rounded-up machine counts displayed in the tree; a fuel type must use the same
+unit wherever it appears in a plan.
 
 The JSON file can also have a `bases` array containing materials available
 without requiring production. For a material that is both a base and a recipe
