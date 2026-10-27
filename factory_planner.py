@@ -128,11 +128,15 @@ def plan_production(
     rate: float,
     base_materials: set[str],
     recipes: Sequence[Recipe],
+    production_multiplier: float = 1.0,
 ) -> list[PlanNode]:
-    """Return every acyclic recipe tree that can produce the requested rate."""
+    """Return production trees for a target rate and machine speed multiplier."""
     if not target:
         raise PlanningError("target material must not be empty")
     rate = _positive_number(rate, "target rate")
+    production_multiplier = _positive_number(
+        production_multiplier, "production multiplier"
+    )
     by_output: dict[str, list[Recipe]] = {}
     for recipe in recipes:
         for material in recipe.outputs:
@@ -166,8 +170,11 @@ def plan_production(
                 child_options.append(options)
             else:
                 equivalents = cycles_per_second * recipe.seconds
-                machine_count = max(1, math.ceil(equivalents - 1e-12))
-                utilization = equivalents / machine_count
+                machine_count = max(
+                    1,
+                    math.ceil(equivalents / production_multiplier - 1e-12),
+                )
+                utilization = equivalents / (machine_count * production_multiplier)
                 for children in product(*child_options):
                     yield PlanNode(
                         material=material,
@@ -179,7 +186,10 @@ def plan_production(
                         inputs=tuple(children),
                     )
 
-    plans = [_reinvest_byproducts(plan) for plan in expand(target, rate, frozenset())]
+    plans = [
+        _reinvest_byproducts(plan, production_multiplier)
+        for plan in expand(target, rate, frozenset())
+    ]
     if not plans:
         raise PlanningError(
             f"no production tree can make '{target}' at {rate:g}/s "
@@ -188,7 +198,7 @@ def plan_production(
     return plans
 
 
-def _reinvest_byproducts(root: PlanNode) -> PlanNode:
+def _reinvest_byproducts(root: PlanNode, production_multiplier: float) -> PlanNode:
     """Use stable recipe byproducts to reduce matching input production."""
     nodes: list[tuple[PlanNode, tuple[int, ...], int]] = []
     pending = deque([(root, (), 0)])
@@ -292,8 +302,14 @@ def _reinvest_byproducts(root: PlanNode) -> PlanNode:
 
         cycles = produced / node.recipe.outputs[node.material]
         equivalents = cycles * node.recipe.seconds
-        machines = max(1, math.ceil(equivalents - 1e-12)) if produced else 0
-        utilization = equivalents / machines if machines else 0.0
+        machines = (
+            max(1, math.ceil(equivalents / production_multiplier - 1e-12))
+            if produced
+            else 0
+        )
+        utilization = (
+            equivalents / (machines * production_multiplier) if machines else 0.0
+        )
         child_factor = inherited_factor * (produced / required) if required else 0.0
         children = (
             tuple(
@@ -348,7 +364,9 @@ def collect_additional_output_totals(node: PlanNode) -> dict[str, float]:
     }
 
 
-def collect_fuel_totals(node: PlanNode) -> dict[str, tuple[str, float]]:
+def collect_fuel_totals(
+    node: PlanNode, multiplier: float = 1.0
+) -> dict[str, tuple[str, float]]:
     """Sum machine fuel-consumption rates across a production tree."""
     totals: dict[str, tuple[str, float]] = {}
 
@@ -364,7 +382,7 @@ def collect_fuel_totals(node: PlanNode) -> dict[str, tuple[str, float]]:
                 totals[fuel_type] = (
                     requirement.unit,
                     (existing[1] if existing is not None else 0.0)
-                    + current.machines * requirement.per_second,
+                    + current.machines * requirement.per_second * multiplier,
                 )
         for child in current.inputs:
             add_node(child)
@@ -373,7 +391,9 @@ def collect_fuel_totals(node: PlanNode) -> dict[str, tuple[str, float]]:
     return totals
 
 
-def format_plan(node: PlanNode, indent: int = 0) -> str:
+def format_plan(
+    node: PlanNode, indent: int = 0, fuel_multiplier: float = 1.0
+) -> str:
     """Format a plan tree as readable indented text."""
     prefix = " " * indent
     if node.recipe is None:
@@ -406,13 +426,13 @@ def format_plan(node: PlanNode, indent: int = 0) -> str:
         )
     if node.machines and recipe.fuel:
         fuel_rates = ", ".join(
-            f"{fuel_type} {_format_rate(requirement.per_second)} "
+            f"{fuel_type} {_format_rate(requirement.per_second * fuel_multiplier)} "
             f"{requirement.unit}/s per machine"
             for fuel_type, requirement in sorted(recipe.fuel.items())
         )
         total_rates = ", ".join(
             f"{fuel_type} "
-            f"{_format_rate(requirement.per_second * node.machines)} "
+            f"{_format_rate(requirement.per_second * node.machines * fuel_multiplier)} "
             f"{requirement.unit}/s"
             for fuel_type, requirement in sorted(recipe.fuel.items())
         )
@@ -428,7 +448,10 @@ def format_plan(node: PlanNode, indent: int = 0) -> str:
     if node.machines:
         if node.inputs:
             lines.append(f"{prefix}  Inputs:")
-            lines.extend(format_plan(child, indent + 4) for child in node.inputs)
+            lines.extend(
+                format_plan(child, indent + 4, fuel_multiplier)
+                for child in node.inputs
+            )
         else:
             lines.append(f"{prefix}  Inputs: none")
     return "\n".join(lines)

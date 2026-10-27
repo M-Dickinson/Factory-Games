@@ -17,6 +17,14 @@ production**. The page shows each valid production option, reinvested and
 unreinvested additional outputs, and fuel requirements. The recipe database is
 fixed to `recipes.json`; it cannot be switched from the page.
 
+The planner has a **Production** tab for the target and requested rate and an
+**Upgrades** tab for item production/consumption rate increase and fuel
+consumption reduction. Both default to 0% and can be set in 25% increments from 0% to 200%. An item
+production upgrade increases machine capacity without changing the requested
+target rate or its material requirements; at 25%, fewer machines may be needed
+to produce the same rate. Fuel consumption is divided by one plus the selected
+reduction (a 200% upgrade divides fuel use by 3).
+
 ## Recipe database
 
 The JSON file has a `recipes` array. Every recipe has a machine type,

@@ -33,6 +33,19 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(plan.inputs[0].inputs[0].material, "ore")
         self.assertEqual(plan.inputs[0].inputs[0].rate, 4)
 
+    def test_production_upgrade_reduces_machines_without_changing_rates(self) -> None:
+        recipe = Recipe("plate", "Furnace", 2, {"ore": 1}, {"plate": 1})
+        [plan] = plan_production("plate", 4, {"ore"}, [recipe])
+        [upgraded_plan] = plan_production(
+            "plate", 4, {"ore"}, [recipe], production_multiplier=1.25
+        )
+
+        self.assertEqual(plan.rate, upgraded_plan.rate)
+        self.assertEqual(plan.inputs[0].rate, upgraded_plan.inputs[0].rate)
+        self.assertEqual(plan.machines, 8)
+        self.assertEqual(upgraded_plan.machines, 7)
+        self.assertLessEqual(upgraded_plan.utilization, 1)
+
     def test_fuel_totals_sum_machine_rates_across_tree(self) -> None:
         recipes = [
             Recipe(
@@ -57,6 +70,10 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(
             collect_fuel_totals(plan),
             {"electricity": ("kW", 40), "steam": ("kg", 3)},
+        )
+        self.assertEqual(
+            collect_fuel_totals(plan, 1.5),
+            {"electricity": ("kW", 60), "steam": ("kg", 4.5)},
         )
 
     def test_plan_shows_fuel_rate_under_each_machine_step(self) -> None:

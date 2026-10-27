@@ -29,18 +29,34 @@ def index(request: HttpRequest) -> HttpResponse:
         request.POST if request.method == "POST" else None,
         materials=materials,
     )
+    active_tab = (
+        form["active_tab"].value()
+        if request.method == "POST"
+        else "standard"
+    )
+    if active_tab not in {"standard", "upgrades"}:
+        active_tab = "standard"
     results: list[dict[str, object]] = []
 
     if request.method == "POST" and form.is_valid():
         try:
+            item_rate_upgrade = float(form.cleaned_data["item_rate_upgrade"])
+            fuel_consumption_upgrade = float(
+                form.cleaned_data["fuel_consumption_upgrade"]
+            )
+            production_multiplier = 1 + item_rate_upgrade
             plans = plan_production(
                 form.cleaned_data["target"],
                 form.cleaned_data["rate"],
                 bases,
                 recipes,
+                production_multiplier=production_multiplier,
             )
+            fuel_multiplier = 1 / (1 + fuel_consumption_upgrade)
             for index, plan in enumerate(plans, start=1):
-                fuel_totals = collect_fuel_totals(plan)
+                fuel_totals = collect_fuel_totals(
+                    plan, fuel_multiplier
+                )
                 additional_outputs = collect_additional_output_totals(plan)
                 results.append(
                     {
@@ -49,7 +65,9 @@ def index(request: HttpRequest) -> HttpResponse:
                             if len(plans) > 1
                             else "Production plan"
                         ),
-                        "plan": format_plan(plan),
+                        "plan": format_plan(
+                            plan, fuel_multiplier=fuel_multiplier
+                        ),
                         "fuel_totals": [
                             f"{fuel_type}: {quantity:.6g} {unit}/s"
                             for fuel_type, (unit, quantity) in sorted(
@@ -70,5 +88,10 @@ def index(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "planner/index.html",
-        {"form": form, "materials": materials, "results": results},
+        {
+            "form": form,
+            "materials": materials,
+            "results": results,
+            "active_tab": active_tab,
+        },
     )

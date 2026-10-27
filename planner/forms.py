@@ -5,6 +5,16 @@ from django import forms
 from django.core.exceptions import ValidationError
 
 
+PRODUCTION_UPGRADE_CHOICES = tuple(
+    (f"{percentage / 100:g}", f"{percentage}% increase")
+    for percentage in range(0, 201, 25)
+)
+FUEL_UPGRADE_CHOICES = tuple(
+    (f"{percentage / 100:g}", f"{percentage}% reduction")
+    for percentage in range(0, 201, 25)
+)
+
+
 class PlanRequestForm(forms.Form):
     target = forms.CharField(
         label="Target material",
@@ -21,6 +31,21 @@ class PlanRequestForm(forms.Form):
         widget=forms.TextInput(
             attrs={"inputmode": "decimal", "placeholder": "e.g. 2"}
         ),
+    )
+    item_rate_upgrade = forms.ChoiceField(
+        label="Item production (and consumption) rate increase",
+        choices=PRODUCTION_UPGRADE_CHOICES,
+        initial="0",
+    )
+    fuel_consumption_upgrade = forms.ChoiceField(
+        label="Fuel consumption reduction",
+        choices=FUEL_UPGRADE_CHOICES,
+        initial="0",
+    )
+    active_tab = forms.CharField(
+        required=False,
+        widget=forms.HiddenInput,
+        initial="standard",
     )
 
     def __init__(
@@ -40,3 +65,9 @@ class PlanRequestForm(forms.Form):
         if not math.isfinite(rate) or rate <= 0:
             raise ValidationError("Enter a finite rate greater than zero.")
         return rate
+
+    def clean_active_tab(self) -> str:
+        active_tab = self.cleaned_data["active_tab"] or "standard"
+        if active_tab not in {"standard", "upgrades"}:
+            raise ValidationError("Choose a valid planner tab.")
+        return active_tab

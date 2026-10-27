@@ -11,11 +11,17 @@
     form, .result { border: 1px solid #8886; border-radius: .6rem; padding: 1rem; }
     form { display: grid; gap: .8rem; }
     label { display: grid; gap: .25rem; font-weight: 600; }
-    input, button { box-sizing: border-box; font: inherit; padding: .55rem; }
+    input, select, button { box-sizing: border-box; font: inherit; padding: .55rem; }
     button { cursor: pointer; justify-self: start; }
     .errors { color: #b42318; }
     .result { margin-top: 1rem; }
     pre { overflow-x: auto; }
+    .tabs { display: flex; gap: .5rem; border-bottom: 1px solid #8886; }
+    .tab[aria-selected="true"] { border-bottom: 3px solid currentColor; }
+    .tab-panel { display: grid; gap: .8rem; }
+    .upgrade-options { display: flex; flex-wrap: wrap; gap: 1rem; }
+    .upgrade-options label { flex: 1 1 16rem; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
@@ -24,17 +30,50 @@
     <form method="post">
       {% csrf_token %}
       {{ form.non_field_errors }}
-      <label for="{{ form.target.id_for_label }}">{{ form.target.label }}</label>
-      {{ form.target }}
-      {{ form.target.errors }}
-      <datalist id="target-materials">
-        {% for material in materials %}
-          <option value="{{ material }}"></option>
-        {% endfor %}
-      </datalist>
-      <label for="{{ form.rate.id_for_label }}">{{ form.rate.label }} (units/s)</label>
-      {{ form.rate }}
-      {{ form.rate.errors }}
+      {{ form.active_tab }}
+      <div class="tabs" role="tablist" aria-label="Planner settings">
+        <button class="tab" id="standard-tab" type="button" role="tab"
+                aria-controls="standard-panel"
+                aria-selected="{% if active_tab == 'standard' %}true{% else %}false{% endif %}">
+          Production
+        </button>
+        <button class="tab" id="upgrades-tab" type="button" role="tab"
+                aria-controls="upgrades-panel"
+                aria-selected="{% if active_tab == 'upgrades' %}true{% else %}false{% endif %}">
+          Upgrades
+        </button>
+      </div>
+      <section class="tab-panel" id="standard-panel" role="tabpanel"
+               aria-labelledby="standard-tab"
+               {% if active_tab != 'standard' %}hidden{% endif %}>
+        <label for="{{ form.target.id_for_label }}">{{ form.target.label }}</label>
+        {{ form.target }}
+        {{ form.target.errors }}
+        <datalist id="target-materials">
+          {% for material in materials %}
+            <option value="{{ material }}"></option>
+          {% endfor %}
+        </datalist>
+        <label for="{{ form.rate.id_for_label }}">{{ form.rate.label }} (units/s)</label>
+        {{ form.rate }}
+        {{ form.rate.errors }}
+      </section>
+      <section class="tab-panel" id="upgrades-panel" role="tabpanel"
+               aria-labelledby="upgrades-tab"
+               {% if active_tab != 'upgrades' %}hidden{% endif %}>
+        <div class="upgrade-options">
+          <label for="{{ form.item_rate_upgrade.id_for_label }}">
+            {{ form.item_rate_upgrade.label }}
+            {{ form.item_rate_upgrade }}
+          </label>
+          <label for="{{ form.fuel_consumption_upgrade.id_for_label }}">
+            {{ form.fuel_consumption_upgrade.label }}
+            {{ form.fuel_consumption_upgrade }}
+          </label>
+        </div>
+        {{ form.item_rate_upgrade.errors }}
+        {{ form.fuel_consumption_upgrade.errors }}
+      </section>
       <button type="submit">Plan production</button>
     </form>
 
@@ -61,5 +100,22 @@
       </section>
     {% endfor %}
   </main>
+  <script>
+    const tabs = document.querySelectorAll('[role="tab"]');
+    const activeTabInput = document.getElementById("id_active_tab");
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const selected = tab.id === "upgrades-tab" ? "upgrades" : "standard";
+        activeTabInput.value = selected;
+        tabs.forEach((item) => {
+          const isSelected = item === tab;
+          item.setAttribute("aria-selected", String(isSelected));
+          document.getElementById(item.getAttribute("aria-controls")).hidden =
+            !isSelected;
+        });
+      });
+    });
+  </script>
 </body>
 </html>
