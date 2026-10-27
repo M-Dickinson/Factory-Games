@@ -69,8 +69,13 @@ acyclic recipe combinations are displayed as separate options. Base materials
 can be supplied directly, and matching recipes are also considered, including
 recipes with no inputs (such as mining). Machine totals are rounded up to
 whole machines; utilization is shown for the requested average throughput.
-Additional outputs from a recipe are reported as byproducts, but are not
-credited against requirements elsewhere in the tree.
+Additional outputs from recipes are reinvested into matching material
+requirements elsewhere in the same tree. Larger requirements are covered
+first within each breadth-first frontier; a step is considered only after its
+ancestors can no longer trim it. When a requirement is partly or fully supplied
+by another step, its production and upstream input requirements are reduced
+accordingly. Byproducts that cannot be reinvested are listed with the final
+fuel requirements.
 
 Run the unit tests with:
 

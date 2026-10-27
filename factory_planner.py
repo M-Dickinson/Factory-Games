@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import sys
+from collections import deque
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
@@ -41,6 +42,7 @@ class PlanNode:
     machines: int = 0
     utilization: float = 0.0
     inputs: tuple[PlanNode, ...] = ()
+    sourced_elsewhere: float = 0.0
 
 
 def _positive_number(value: object, label: str) -> float:
@@ -179,7 +181,7 @@ def plan_production(
                         inputs=tuple(children),
                     )
 
-    plans = list(expand(target, rate, frozenset()))
+    plans = [_reinvest_byproducts(plan) for plan in expand(target, rate, frozenset())]
     if not plans:
         raise PlanningError(
             f"no production tree can make '{target}' at {rate:g}/s "
@@ -188,8 +190,164 @@ def plan_production(
     return plans
 
 
+def _reinvest_byproducts(root: PlanNode) -> PlanNode:
+    """Use stable recipe byproducts to reduce matching input production."""
+    nodes: list[tuple[PlanNode, tuple[int, ...], int]] = []
+    pending = deque([(root, (), 0)])
+    while pending:
+        node, path, depth = pending.popleft()
+        nodes.append((node, path, depth))
+        pending.extend(
+            (child, path + (index,), depth + 1)
+            for index, child in enumerate(node.inputs)
+        )
+
+    producers: list[tuple[tuple[int, ...], str, float]] = []
+    available_materials: set[str] = set()
+    for node, path, _ in nodes:
+        if node.recipe is None:
+            continue
+        for material, quantity in node.recipe.outputs.items():
+            if material != node.material:
+                amount = quantity * node.cycles_per_second
+                producers.append((path, material, amount))
+                available_materials.add(material)
+
+    if not producers:
+        return root
+
+    potential_sinks = [
+        path
+        for node, path, _ in nodes
+        if path and node.material in available_materials
+    ]
+
+    def is_within_sink(path: tuple[int, ...]) -> bool:
+        return any(path[: len(sink)] == sink for sink in potential_sinks)
+
+    stock: dict[str, float] = {}
+    for path, material, amount in producers:
+        if not is_within_sink(path):
+            stock[material] = stock.get(material, 0.0) + amount
+
+    if not stock:
+        return root
+
+    nodes_by_path = {path: node for node, path, _ in nodes}
+    sink_paths = set(potential_sinks)
+    sink_frontiers = {
+        path: sum(path[:index] in sink_paths for index in range(1, len(path)))
+        for path in sink_paths
+        if nodes_by_path[path].material in stock
+    }
+
+    allocations: dict[tuple[int, ...], float] = {}
+    factors: dict[tuple[int, ...], float] = {
+        path: 1.0 for _, path, _ in nodes
+    }
+    for frontier in range(max(sink_frontiers.values(), default=-1) + 1):
+        by_material: dict[str, list[tuple[PlanNode, tuple[int, ...]]]] = {}
+        for path, path_frontier in sink_frontiers.items():
+            if path_frontier == frontier:
+                node = nodes_by_path[path]
+                by_material.setdefault(node.material, []).append((node, path))
+
+        for material, sinks in by_material.items():
+            sinks.sort(
+                key=lambda entry: (
+                    -(entry[0].rate * factors[entry[1]]),
+                    entry[1],
+                )
+            )
+            for node, path in sinks:
+                required = node.rate * factors[path]
+                amount = min(required, stock[material])
+                if amount <= 0:
+                    continue
+                allocations[path] = amount
+                stock[material] -= amount
+
+        factors = {(): 1.0}
+        for node, path, _ in nodes:
+            factor = factors[path]
+            required = node.rate * factor
+            sourced = allocations.get(path, 0.0)
+            remaining_factor = (required - sourced) / required if required else 0.0
+            for index, _ in enumerate(node.inputs):
+                factors[path + (index,)] = factor * remaining_factor
+
+    if not allocations:
+        return root
+
+    def rebuild(
+        node: PlanNode, path: tuple[int, ...], inherited_factor: float
+    ) -> PlanNode:
+        required = node.rate * inherited_factor
+        sourced = allocations.get(path, 0.0)
+        produced = max(0.0, required - sourced)
+        if node.recipe is None:
+            return PlanNode(
+                material=node.material,
+                rate=required,
+                sourced_elsewhere=sourced,
+            )
+
+        cycles = produced / node.recipe.outputs[node.material]
+        equivalents = cycles * node.recipe.seconds
+        machines = max(1, math.ceil(equivalents - 1e-12)) if produced else 0
+        utilization = equivalents / machines if machines else 0.0
+        child_factor = inherited_factor * (produced / required) if required else 0.0
+        children = (
+            tuple(
+                rebuild(child, path + (index,), child_factor)
+                for index, child in enumerate(node.inputs)
+            )
+            if produced
+            else ()
+        )
+        return PlanNode(
+            material=node.material,
+            rate=required,
+            recipe=node.recipe,
+            cycles_per_second=cycles,
+            machines=machines,
+            utilization=utilization,
+            inputs=children,
+            sourced_elsewhere=sourced,
+        )
+
+    return rebuild(root, (), 1.0)
+
+
 def _format_rate(rate: float) -> str:
     return f"{rate:.6g}"
+
+
+def collect_additional_output_totals(node: PlanNode) -> dict[str, float]:
+    """Return additional recipe outputs left after reinvestment."""
+    totals: dict[str, float] = {}
+    sourced: dict[str, float] = {}
+
+    def visit(current: PlanNode) -> None:
+        if current.recipe is not None:
+            for material, quantity in current.recipe.outputs.items():
+                if material != current.material:
+                    totals[material] = totals.get(material, 0.0) + (
+                        quantity * current.cycles_per_second
+                    )
+        if current.sourced_elsewhere:
+            sourced[current.material] = (
+                sourced.get(current.material, 0.0) + current.sourced_elsewhere
+            )
+        for child in current.inputs:
+            visit(child)
+
+    visit(node)
+    return {
+        material: amount - sourced.get(material, 0.0)
+        for material, amount in totals.items()
+        if amount - sourced.get(material, 0.0) > 1e-12
+    }
 
 
 def collect_fuel_totals(node: PlanNode) -> dict[str, tuple[str, float]]:
@@ -197,7 +355,7 @@ def collect_fuel_totals(node: PlanNode) -> dict[str, tuple[str, float]]:
     totals: dict[str, tuple[str, float]] = {}
 
     def add_node(current: PlanNode) -> None:
-        if current.recipe is not None and current.recipe.fuel:
+        if current.recipe is not None and current.machines and current.recipe.fuel:
             for fuel_type, requirement in current.recipe.fuel.items():
                 existing = totals.get(fuel_type)
                 if existing is not None and existing[0] != requirement.unit:
@@ -221,35 +379,60 @@ def format_plan(node: PlanNode, indent: int = 0) -> str:
     """Format a plan tree as readable indented text."""
     prefix = " " * indent
     if node.recipe is None:
-        return f"{prefix}- {node.material}: {_format_rate(node.rate)}/s (base material)"
+        if node.sourced_elsewhere >= node.rate:
+            return (
+                f"{prefix}- {node.material}: {_format_rate(node.rate)}/s "
+                "(sourced from elsewhere in the tree)"
+            )
+        label = "base material"
+        if node.sourced_elsewhere:
+            label += (
+                f"; {_format_rate(node.sourced_elsewhere)}/s sourced "
+                "from elsewhere in the tree"
+            )
+        return f"{prefix}- {node.material}: {_format_rate(node.rate)}/s ({label})"
 
     recipe = node.recipe
     lines = [
         f"{prefix}- {node.material}: {_format_rate(node.rate)}/s",
-        f"{prefix}  {node.machines} x {recipe.machine} "
-        f"({recipe.name}; {_format_rate(node.utilization * 100)}% utilization)",
     ]
-    if recipe.fuel:
+    if node.sourced_elsewhere:
+        lines.append(
+            f"{prefix}  {_format_rate(node.sourced_elsewhere)}/s sourced "
+            "from elsewhere in the tree"
+        )
+    if node.machines:
+        lines.append(
+            f"{prefix}  {node.machines} x {recipe.machine} "
+            f"({recipe.name}; {_format_rate(node.utilization * 100)}% utilization)"
+        )
+    if node.machines and recipe.fuel:
         fuel_rates = ", ".join(
             f"{fuel_type} {_format_rate(requirement.per_second)} "
-            f"{requirement.unit}/s per machine "
-            f"({requirement.per_second * node.machines:.6g} {requirement.unit}/s)"
+            f"{requirement.unit}/s per machine"
             for fuel_type, requirement in sorted(recipe.fuel.items())
         )
-        lines.append(f"{prefix}  Fuel: {fuel_rates}")
-    if len(recipe.outputs) > 1:
+        total_rates = ", ".join(
+            f"{fuel_type} "
+            f"{_format_rate(requirement.per_second * node.machines)} "
+            f"{requirement.unit}/s"
+            for fuel_type, requirement in sorted(recipe.fuel.items())
+        )
+        lines.append(f"{prefix}  Fuel: {fuel_rates} (total: {total_rates})")
+    if node.machines and len(recipe.outputs) > 1:
         byproducts = [
             f"{material} {_format_rate(quantity * node.cycles_per_second)}/s"
             for material, quantity in recipe.outputs.items()
             if material != node.material
         ]
         if byproducts:
-            lines.append(f"{prefix}  Other outputs: {', '.join(byproducts)}")
-    if node.inputs:
-        lines.append(f"{prefix}  Inputs:")
-        lines.extend(format_plan(child, indent + 4) for child in node.inputs)
-    else:
-        lines.append(f"{prefix}  Inputs: none")
+            lines.append(f"{prefix}  Additional outputs: {', '.join(byproducts)}")
+    if node.machines:
+        if node.inputs:
+            lines.append(f"{prefix}  Inputs:")
+            lines.extend(format_plan(child, indent + 4) for child in node.inputs)
+        else:
+            lines.append(f"{prefix}  Inputs: none")
     return "\n".join(lines)
 
 
@@ -296,6 +479,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if totals:
             for fuel_type, (unit, quantity) in sorted(totals.items()):
                 print(f"  {fuel_type}: {_format_rate(quantity)} {unit}")
+        else:
+            print("  none")
+        additional_outputs = collect_additional_output_totals(plan)
+        print("Unreinvested additional outputs per second:")
+        if additional_outputs:
+            for material, quantity in sorted(additional_outputs.items()):
+                print(f"  {material}: {_format_rate(quantity)}")
         else:
             print("  none")
         if index < len(plans):

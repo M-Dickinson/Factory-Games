@@ -7,6 +7,7 @@ from factory_planner import (
     FuelRequirement,
     PlanningError,
     Recipe,
+    collect_additional_output_totals,
     collect_fuel_totals,
     format_plan,
     load_recipes,
@@ -75,6 +76,7 @@ class PlannerTests(unittest.TestCase):
         rendered = format_plan(plan)
 
         self.assertIn("Fuel: electricity 5 kW/s per machine, steam 0.25 kg/s per machine", rendered)
+        self.assertIn("(total: electricity 30 kW/s, steam 1.5 kg/s)", rendered)
 
     def test_rejects_inconsistent_fuel_units(self) -> None:
         recipes = [
@@ -109,6 +111,165 @@ class PlannerTests(unittest.TestCase):
     def test_can_use_any_output_of_a_multi_output_recipe(self) -> None:
         [plan] = plan_production("plate", 3, {"ore"}, [self.recipes[2]])
         self.assertEqual(plan.inputs[0].rate, 1.5)
+
+    def test_reinvests_byproducts_into_matching_base_material_demands(self) -> None:
+        recipes = [
+            Recipe(
+                "assemble gear",
+                "Assembler",
+                1,
+                {"widget": 1, "ore": 3},
+                {"gear": 1},
+            ),
+            Recipe(
+                "make widget",
+                "Assembler",
+                1,
+                {"coal": 1},
+                {"widget": 1, "ore": 5},
+            ),
+        ]
+        plans = plan_production("gear", 1, {"coal", "ore"}, recipes)
+        plan = next(plan for plan in plans if plan.inputs[1].recipe is None)
+
+        ore = plan.inputs[1]
+        self.assertEqual(ore.sourced_elsewhere, 3)
+        self.assertEqual(collect_additional_output_totals(plan), {"ore": 2})
+        self.assertIn("sourced from elsewhere in the tree", format_plan(plan))
+
+    def test_reinvests_into_largest_matching_demand_first(self) -> None:
+        recipes = [
+            Recipe(
+                "make product",
+                "Assembler",
+                1,
+                {"large part": 1, "small part": 1, "surplus": 1},
+                {"product": 1},
+            ),
+            Recipe("make large part", "Assembler", 1, {"ore": 4}, {"large part": 1}),
+            Recipe("make small part", "Assembler", 1, {"ore": 2}, {"small part": 1}),
+            Recipe(
+                "make surplus",
+                "Assembler",
+                1,
+                {},
+                {"surplus": 1, "ore": 4},
+            ),
+        ]
+        plans = plan_production("product", 1, {"ore"}, recipes)
+        plan = next(
+            plan
+            for plan in plans
+            if plan.inputs[0].inputs[0].recipe is None
+            and plan.inputs[1].inputs[0].recipe is None
+        )
+
+        large_ore = plan.inputs[0].inputs[0]
+        small_ore = plan.inputs[1].inputs[0]
+        self.assertEqual(large_ore.sourced_elsewhere, 4)
+        self.assertEqual(small_ore.sourced_elsewhere, 0)
+
+    def test_prioritizes_largest_demand_across_breadth_levels(self) -> None:
+        recipes = [
+            Recipe(
+                "make product",
+                "Assembler",
+                1,
+                {"deep part": 1, "ore": 1, "surplus": 1},
+                {"product": 1},
+            ),
+            Recipe("make deep part", "Assembler", 1, {"component": 1}, {"deep part": 1}),
+            Recipe("make component", "Assembler", 1, {"ore": 4}, {"component": 1}),
+            Recipe(
+                "make surplus",
+                "Assembler",
+                1,
+                {},
+                {"surplus": 1, "ore": 4},
+            ),
+        ]
+        plans = plan_production("product", 1, {"ore"}, recipes)
+        plan = next(
+            plan
+            for plan in plans
+            if plan.inputs[1].recipe is None
+            and plan.inputs[0].inputs[0].inputs[0].recipe is None
+        )
+
+        deep_ore = plan.inputs[0].inputs[0].inputs[0]
+        shallow_ore = plan.inputs[1]
+        self.assertEqual(deep_ore.sourced_elsewhere, 4)
+        self.assertEqual(shallow_ore.sourced_elsewhere, 0)
+
+    def test_reinvestment_trims_the_sourced_step_and_its_inputs(self) -> None:
+        recipes = [
+            Recipe(
+                "make product",
+                "Assembler",
+                1,
+                {"part": 1, "intermediate": 2},
+                {"product": 1},
+            ),
+            Recipe(
+                "make part",
+                "Assembler",
+                1,
+                {"stone": 2},
+                {"part": 1, "intermediate": 1.5},
+            ),
+            Recipe(
+                "make intermediate",
+                "Assembler",
+                1,
+                {"ore": 4},
+                {"intermediate": 1},
+            ),
+        ]
+        plans = plan_production("product", 1, {"stone", "ore"}, recipes)
+        plan = next(
+            plan for plan in plans if plan.inputs[1].recipe.name == "make intermediate"
+        )
+
+        intermediate = plan.inputs[1]
+        self.assertEqual(intermediate.sourced_elsewhere, 1.5)
+        self.assertEqual(intermediate.inputs[0].rate, 2)
+
+    def test_excess_byproduct_removes_fully_sourced_step_and_leaves_surplus(self) -> None:
+        recipes = [
+            Recipe(
+                "make product",
+                "Assembler",
+                1,
+                {"part": 1, "intermediate": 2},
+                {"product": 1},
+            ),
+            Recipe(
+                "make part",
+                "Assembler",
+                1,
+                {"stone": 2},
+                {"part": 1, "intermediate": 3},
+            ),
+            Recipe(
+                "make intermediate",
+                "Assembler",
+                1,
+                {"ore": 4},
+                {"intermediate": 1},
+                {"electricity": FuelRequirement("kW", 5)},
+            ),
+        ]
+        plans = plan_production("product", 1, {"stone", "ore"}, recipes)
+        plan = next(
+            plan for plan in plans if plan.inputs[1].recipe.name == "make intermediate"
+        )
+
+        intermediate = plan.inputs[1]
+        self.assertEqual(intermediate.sourced_elsewhere, 2)
+        self.assertEqual(intermediate.machines, 0)
+        self.assertEqual(intermediate.inputs, ())
+        self.assertEqual(collect_fuel_totals(plan), {})
+        self.assertEqual(collect_additional_output_totals(plan), {"intermediate": 1})
 
     def test_skips_cycles_and_unavailable_branches(self) -> None:
         recipes = [
