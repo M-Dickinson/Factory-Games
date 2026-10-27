@@ -51,7 +51,7 @@ def index(request: HttpRequest) -> HttpResponse:
                         ),
                         "plan": format_plan(plan),
                         "fuel_totals": [
-                            f"{fuel_type}: {quantity:.6g} {unit}"
+                            f"{fuel_type}: {quantity:.6g} {unit}/s"
                             for fuel_type, (unit, quantity) in sorted(
                                 fuel_totals.items()
                             )
