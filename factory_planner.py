@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import math
-import sys
 from collections import deque
 from dataclasses import dataclass
 from itertools import product
@@ -434,64 +432,3 @@ def format_plan(node: PlanNode, indent: int = 0) -> str:
         else:
             lines.append(f"{prefix}  Inputs: none")
     return "\n".join(lines)
-
-
-def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Calculate machine and input requirements for a target material."
-    )
-    parser.add_argument(
-        "--recipes",
-        type=Path,
-        default=Path("recipes.json"),
-        help="JSON recipe database (default: recipes.json)",
-    )
-    parser.add_argument(
-        "--target", 
-        required=True, 
-        help="target material name"
-    )
-    parser.add_argument(
-        "--rate",
-        required=True,
-        type=float,
-        help="target production rate in units per second",
-    )
-    return parser.parse_args(argv)
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    args = _parse_args(argv)
-    try:
-        recipes = load_recipes(args.recipes)
-        bases = load_bases(args.recipes)
-        plans = plan_production(args.target, args.rate, bases, recipes)
-        fuel_totals = [collect_fuel_totals(plan) for plan in plans]
-    except PlanningError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 2
-
-    for index, (plan, totals) in enumerate(zip(plans, fuel_totals), start=1):
-        if len(plans) > 1:
-            print(f"Option {index} of {len(plans)}:")
-        print(format_plan(plan))
-        print("Fuel requirements per second:")
-        if totals:
-            for fuel_type, (unit, quantity) in sorted(totals.items()):
-                print(f"  {fuel_type}: {_format_rate(quantity)} {unit}")
-        else:
-            print("  none")
-        additional_outputs = collect_additional_output_totals(plan)
-        print("Unreinvested additional outputs per second:")
-        if additional_outputs:
-            for material, quantity in sorted(additional_outputs.items()):
-                print(f"  {material}: {_format_rate(quantity)}")
-        else:
-            print("  none")
-        if index < len(plans):
-            print()
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

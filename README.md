@@ -1,20 +1,21 @@
 # Factory production planner
 
-A dependency-free Python command-line tool that calculates production trees for
-a requested material throughput. The included [recipes.json](recipes.json)
-demonstrates the recipe database format.
+A minimal Django application that calculates production trees for a requested
+material throughput. The app uses the included [recipes.json](recipes.json)
+recipe database.
 
-## Run
+## Run the application
 
 ```text
-python factory_planner.py --target circuit --rate 2 --base "iron ore" "copper ore"
+python -m pip install -r requirements.txt
+python manage.py runserver
 ```
 
-`--recipes` is an optional argument that can specify a separate JSON recipe
-library (defaults to recipes.json)
-
-`--target` is the requested output material. `--rate` is the requested output
-quantity per second.
+Open <http://127.0.0.1:8000/>. Choose a target by typing into the searchable
+material field, enter the desired rate in units per second, and select **Plan
+production**. The page shows each valid production option, reinvested and
+unreinvested additional outputs, and fuel requirements. The recipe database is
+fixed to `recipes.json`; it cannot be switched from the page.
 
 ## Recipe database
 
@@ -77,8 +78,9 @@ by another step, its production and upstream input requirements are reduced
 accordingly. Byproducts that cannot be reinvested are listed with the final
 fuel requirements.
 
-Run the unit tests with:
+Run the Django and planner unit tests with:
 
 ```text
+python manage.py test
 python -m unittest
 ```

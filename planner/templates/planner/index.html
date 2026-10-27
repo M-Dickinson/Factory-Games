@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Factory production planner</title>
+  <style>
+    :root { color-scheme: light dark; font: 16px/1.5 system-ui, sans-serif; }
+    body { margin: 0 auto; max-width: 860px; padding: 2rem 1rem; }
+    h1, h2, h3 { line-height: 1.2; }
+    form, .result { border: 1px solid #8886; border-radius: .6rem; padding: 1rem; }
+    form { display: grid; gap: .8rem; }
+    label { display: grid; gap: .25rem; font-weight: 600; }
+    input, button { box-sizing: border-box; font: inherit; padding: .55rem; }
+    button { cursor: pointer; justify-self: start; }
+    .errors { color: #b42318; }
+    .result { margin-top: 1rem; }
+    pre { overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Factory production planner</h1>
+    <form method="post">
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      <label for="{{ form.target.id_for_label }}">{{ form.target.label }}</label>
+      {{ form.target }}
+      {{ form.target.errors }}
+      <datalist id="target-materials">
+        {% for material in materials %}
+          <option value="{{ material }}"></option>
+        {% endfor %}
+      </datalist>
+      <label for="{{ form.rate.id_for_label }}">{{ form.rate.label }} (units/s)</label>
+      {{ form.rate }}
+      {{ form.rate.errors }}
+      <button type="submit">Plan production</button>
+    </form>
+
+    {% for result in results %}
+      <section class="result">
+        <h2>{{ result.title }}</h2>
+        <pre>{{ result.plan }}</pre>
+        <h3>Fuel requirements per second</h3>
+        <ul>
+          {% for total in result.fuel_totals %}
+            <li>{{ total }}</li>
+          {% empty %}
+            <li>None</li>
+          {% endfor %}
+        </ul>
+        <h3>Unreinvested additional outputs per second</h3>
+        <ul>
+          {% for output in result.additional_outputs %}
+            <li>{{ output }}</li>
+          {% empty %}
+            <li>None</li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endfor %}
+  </main>
+</body>
+</html>

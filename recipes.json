@@ -117,6 +117,18 @@
       "outputs": {
         "copper ore": 1
       }
+    },
+    {
+      "name": "Make computer",
+      "machine": "Assembler",
+      "seconds": 10,
+      "inputs": {
+        "advanced circuit": 2,
+        "iron plate": 4
+      },
+      "outputs": {
+        "computer": 1
+      }
     }
   ],
   "bases": [
